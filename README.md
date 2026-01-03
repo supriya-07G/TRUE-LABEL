@@ -1,4 +1,4 @@
-# Trust Label: AI-Powered Health Safety Scanner
+# True Label: AI-Powered Health Safety Scanner
 
 Trust Label is a modern, privacy-focused web application designed to help users make informed decisions about the food and medicine they consume. By leveraging advanced multimodal AI reasoning, the app analyzes product labels against a user's unique health profile—including chronic conditions, allergies, and current medications—to provide instant safety analysis and localized summaries.
 
