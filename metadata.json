@@ -1,0 +1,7 @@
+{
+  "name": "Trust Label",
+  "description": "AI-powered health safety scanner for food and medicine. Analyzes ingredients against your personal health profile.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
