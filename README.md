@@ -58,6 +58,3 @@ Trust Label is designed with a "Zero-Knowledge" approach to user data:
 
 Trust Label provides information based on AI analysis of provided labels. It is **not** a substitute for professional medical advice, diagnosis, or treatment. Always consult with a qualified healthcare provider or pharmacist before starting new medications or changing your diet, especially if you have known health conditions or allergies.
 
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
