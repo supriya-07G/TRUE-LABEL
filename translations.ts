@@ -68,7 +68,7 @@ export const translations = {
     ensureVisible: "Ensure ingredient list is clearly visible",
     enterText: "Enter product name or paste ingredient list here...",
     analyzeText: "Analyze Text",
-    aiDisclaimer: "Trust Label uses AI to analyze text. Always verify with a medical professional.",
+    aiDisclaimer: "True Label uses AI to analyze text. Always verify with a medical professional.",
     
     // Results
     share: "Share",
@@ -180,7 +180,7 @@ export const translations = {
     ensureVisible: "పదార్ధాల జాబితా స్పష్టంగా ఉందని నిర్ధారించుకోండి",
     enterText: "ఉత్పత్తి పేరు లేదా పదార్ధాల జాబితాను నమోదు చేయండి...",
     analyzeText: "టెక్స్ట్‌ను విశ్లేషించండి",
-    aiDisclaimer: "AI ఉపయోగిస్తోంది. ఎల్లప్పుడూ వైద్యుడిని సంప్రదించండి.",
+    aiDisclaimer: "True Label AI ఉపయోగిస్తోంది. ఎల్లప్పుడూ వైద్యుడిని సంప్రదించండి.",
     
     share: "షేర్",
     shareReport: "రిపోర్ట్ షేర్ చేయండి",
@@ -286,7 +286,7 @@ export const translations = {
     ensureVisible: "सुनिश्चित करें कि सामग्री सूची स्पष्ट है",
     enterText: "उत्पाद का नाम या सामग्री सूची दर्ज करें...",
     analyzeText: "टेक्स्ट का विश्लेषण करें",
-    aiDisclaimer: "Trust Label AI का उपयोग करता है। हमेशा डॉक्टर से सत्यापित करें।",
+    aiDisclaimer: "True Label AI का उपयोग करता है। हमेशा डॉक्टर से सत्यापित करें।",
     
     share: "शेयर",
     shareReport: "रिपोर्ट शेयर करें",

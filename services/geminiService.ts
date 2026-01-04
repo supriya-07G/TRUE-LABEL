@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { UserProfile, ScanResult, RiskLevel } from '../types';
+import { UserProfile, ScanResult, RiskLevel } from '../types.ts';
 
 // Initialize Gemini Client
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -14,11 +14,12 @@ const createSystemInstruction = (profile: UserProfile): string => {
   const targetLanguage = languageMap[profile.language] || 'English';
 
   return `
-    You are Trust Label, an expert medical and food safety AI assistant. 
+    You are True Label, an expert medical and food safety AI assistant. 
     Your job is to analyze product ingredients (from text or image OCR) and evaluate safety for a specific user.
     
     USER PROFILE:
     - Age: ${profile.age}
+    - Gender: ${profile.gender}
     - Conditions: ${profile.conditions.join(', ')}
     - Allergies: ${profile.allergies.join(', ')}
     - Current Medications: ${profile.medications.join(', ')}
@@ -73,7 +74,6 @@ export const analyzeProduct = async (
   try {
     let response;
 
-    // Define the schema using the Type enum from SDK
     const schema = {
       type: Type.OBJECT,
       properties: {
@@ -104,14 +104,11 @@ export const analyzeProduct = async (
     };
 
     if (input instanceof File) {
-      // Image Processing (OCR + Analysis)
-      // Convert File to Base64
       const base64Data = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(input);
         reader.onload = () => {
             const result = reader.result as string;
-            // Remove data url prefix
             const base64 = result.split(',')[1];
             resolve(base64);
         };
@@ -119,7 +116,7 @@ export const analyzeProduct = async (
       });
 
       response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: {
             parts: [
                 { inlineData: { mimeType: input.type, data: base64Data } },
@@ -133,9 +130,8 @@ export const analyzeProduct = async (
         }
       });
     } else {
-      // Text Processing
       response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: input,
         config: {
           systemInstruction: systemInstruction,
@@ -158,7 +154,6 @@ export const analyzeProduct = async (
 
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
-    // Fallback for demo purposes or error handling
     return {
       id: Date.now().toString(),
       timestamp: Date.now(),
@@ -179,10 +174,9 @@ export const analyzeProduct = async (
 };
 
 export const generateDailyTip = async (): Promise<{tip: string, quiz: any}> => {
-    // Simple mock or light AI call for daily tip
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: "Generate a short 1-sentence health safety tip and one multiple choice quiz question (JSON) related to food or medicine safety.",
             config: {
                 responseMimeType: "application/json"

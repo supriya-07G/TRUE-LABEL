@@ -26,18 +26,18 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, language, onBack }) =
   }, [isDanger]);
 
   const handleShare = async () => {
-    const text = `🚨 *Trust Label Safety Scan* 🚨\n\n` +
+    const text = `🚨 *True Label Safety Scan* 🚨\n\n` +
       `*Product:* ${result.productName}\n` +
       `*Result:* ${result.riskLevel} ${result.riskLevel === 'DANGER' ? '🔴' : result.riskLevel === 'CAUTION' ? '🟡' : '🟢'}\n\n` +
       `*Summary:* ${result.summary}\n\n` +
       `*Safety Note:* ${result.safetyConcerns}\n\n` +
       `Scan Date: ${new Date(result.timestamp).toLocaleDateString()}\n` +
-      `--\nCheck your personalized safety profile on Trust Label.`;
+      `--\nCheck your personalized safety profile on True Label.`;
     
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `Trust Label: ${result.productName}`,
+          title: `True Label: ${result.productName}`,
           text: text
         });
       } catch (err) {
