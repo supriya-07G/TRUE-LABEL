@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Activity, ScanLine, FileClock, Settings, BookOpen, AlertCircle, Trash2, LogOut, ChevronRight, Droplet, Pill, HeartPulse, Globe, Plus, X, Edit2, Check, CheckSquare, Square, Clock, Hash, Search } from 'lucide-react';
 
-import { UserProfile, ViewState, ScanResult, RiskLevel } from './types.ts';
+import { UserProfile, ViewState, ScanResult, RiskLevel, SECURITY_CONFIG } from './types.ts';
 import Scanner from './components/Scanner.tsx';
 import ResultsView from './components/ResultsView.tsx';
 import { translations } from './translations.ts';
@@ -54,8 +54,9 @@ const EditableList = ({
   const [isAdding, setIsAdding] = useState(false);
 
   const handleAdd = () => {
-    if (newItem.trim()) {
-      onAdd(newItem.trim());
+    const trimmed = newItem.trim();
+    if (trimmed && items.length < SECURITY_CONFIG.MAX_LIST_ITEMS) {
+      onAdd(trimmed.substring(0, SECURITY_CONFIG.MAX_ITEM_LENGTH));
       setNewItem('');
       setIsAdding(false);
     }
@@ -74,7 +75,11 @@ const EditableList = ({
           </div>
           <h3 className="font-bold text-brand-800">{title}</h3>
         </div>
-        <button onClick={() => setIsAdding(!isAdding)} className="p-2 hover:bg-brand-50 rounded-full text-brand-600">
+        <button 
+          onClick={() => setIsAdding(!isAdding)} 
+          disabled={items.length >= SECURITY_CONFIG.MAX_LIST_ITEMS}
+          className="p-2 hover:bg-brand-50 rounded-full text-brand-600 disabled:opacity-30"
+        >
           <Plus className="w-5 h-5" />
         </button>
       </div>
@@ -84,6 +89,7 @@ const EditableList = ({
           <input 
             type="text" 
             value={newItem}
+            maxLength={SECURITY_CONFIG.MAX_ITEM_LENGTH}
             onChange={(e) => setNewItem(e.target.value)}
             placeholder={placeholder}
             className="flex-1 px-3 py-2 border border-brand-200 rounded-lg text-sm outline-none focus:ring-2 ring-brand-500 bg-white text-brand-900"
@@ -149,19 +155,33 @@ const Onboarding = ({ onComplete }: { onComplete: (profile: UserProfile) => void
   const [noMeds, setNoMeds] = useState(false);
   const [medInput, setMedInput] = useState({ name: '', dosage: '', freq: '' });
   
-  // Local state for raw allergy text to prevent jumpy formatting with commas/spaces
   const [allergyText, setAllergyText] = useState('');
 
+  const validateStep = (): boolean => {
+    if (step === 1) {
+      if (!data.name || data.name.trim().length === 0) return false;
+      if (data.age === undefined || data.age < 0 || data.age > SECURITY_CONFIG.MAX_AGE) return false;
+      if (data.weight === undefined || data.weight < 0 || data.weight > SECURITY_CONFIG.MAX_WEIGHT) return false;
+      if (!data.gender) return false;
+    }
+    return true;
+  };
+
   const handleNext = () => {
+    if (!validateStep()) {
+      alert("Please fill in all fields correctly.");
+      return;
+    }
+
     if (step < 4) setStep(step + 1);
     else {
       onComplete({
         id: Date.now().toString(),
         onboardingCompleted: true,
-        name: data.name || 'User',
-        age: data.age || 30,
+        name: (data.name || 'User').substring(0, SECURITY_CONFIG.MAX_NAME_LENGTH),
+        age: Math.min(data.age || 30, SECURITY_CONFIG.MAX_AGE),
         gender: data.gender || 'Other',
-        weight: data.weight || 70,
+        weight: Math.min(data.weight || 70, SECURITY_CONFIG.MAX_WEIGHT),
         conditions: data.conditions || [],
         allergies: noAllergies ? [] : (data.allergies || []),
         medications: noMeds ? [] : (data.medications || []),
@@ -182,19 +202,18 @@ const Onboarding = ({ onComplete }: { onComplete: (profile: UserProfile) => void
   };
 
   const addMedication = () => {
-    if (!medInput.name.trim()) return;
-    let entry = medInput.name.trim();
-    if (medInput.dosage.trim()) entry += ` (${medInput.dosage.trim()})`;
-    if (medInput.freq.trim()) entry += ` - ${medInput.freq.trim()}`;
+    const trimmed = medInput.name.trim();
+    if (!trimmed) return;
+    if ((data.medications || []).length >= SECURITY_CONFIG.MAX_LIST_ITEMS) return;
+
+    let entry = trimmed.substring(0, SECURITY_CONFIG.MAX_ITEM_LENGTH);
+    if (medInput.dosage.trim()) entry += ` (${medInput.dosage.trim().substring(0, 50)})`;
+    if (medInput.freq.trim()) entry += ` - ${medInput.freq.trim().substring(0, 50)}`;
+    
     const currentMeds = data.medications || [];
     setData({...data, medications: [...currentMeds, entry]});
     setMedInput({ name: '', dosage: '', freq: '' });
     setNoMeds(false);
-  };
-
-  const removeMedication = (index: number) => {
-    const currentMeds = data.medications || [];
-    setData({...data, medications: currentMeds.filter((_, i) => i !== index)});
   };
 
   return (
@@ -218,10 +237,31 @@ const Onboarding = ({ onComplete }: { onComplete: (profile: UserProfile) => void
                 <option value="hi">Hindi (हिंदी)</option>
               </select>
             </div>
-            <input type="text" placeholder={t.fullName} className="w-full p-4 bg-white rounded-xl border border-brand-100 focus:ring-2 ring-brand-500 outline-none text-brand-900 placeholder:text-brand-300" onChange={e => setData({...data, name: e.target.value})} value={data.name || ''} />
+            <input 
+              type="text" 
+              placeholder={t.fullName} 
+              maxLength={SECURITY_CONFIG.MAX_NAME_LENGTH}
+              className="w-full p-4 bg-white rounded-xl border border-brand-100 focus:ring-2 ring-brand-500 outline-none text-brand-900 placeholder:text-brand-300" 
+              onChange={e => setData({...data, name: e.target.value})} 
+              value={data.name || ''} 
+            />
             <div className="grid grid-cols-2 gap-4">
-               <input type="number" placeholder={t.age} className="w-full p-4 bg-white rounded-xl border border-brand-100 outline-none focus:ring-2 ring-brand-500 text-brand-900 placeholder:text-brand-300" onChange={e => setData({...data, age: parseInt(e.target.value)})} value={data.age || ''} />
-               <input type="number" placeholder={t.weight} className="w-full p-4 bg-white rounded-xl border border-brand-100 outline-none focus:ring-2 ring-brand-500 text-brand-900 placeholder:text-brand-300" onChange={e => setData({...data, weight: parseInt(e.target.value)})} value={data.weight || ''} />
+               <input 
+                 type="number" 
+                 placeholder={t.age} 
+                 min="0" max={SECURITY_CONFIG.MAX_AGE}
+                 className="w-full p-4 bg-white rounded-xl border border-brand-100 outline-none focus:ring-2 ring-brand-500 text-brand-900 placeholder:text-brand-300" 
+                 onChange={e => setData({...data, age: Math.min(parseInt(e.target.value) || 0, SECURITY_CONFIG.MAX_AGE)})} 
+                 value={data.age || ''} 
+               />
+               <input 
+                 type="number" 
+                 placeholder={t.weight} 
+                 min="0" max={SECURITY_CONFIG.MAX_WEIGHT}
+                 className="w-full p-4 bg-white rounded-xl border border-brand-100 outline-none focus:ring-2 ring-brand-500 text-brand-900 placeholder:text-brand-300" 
+                 onChange={e => setData({...data, weight: Math.min(parseInt(e.target.value) || 0, SECURITY_CONFIG.MAX_WEIGHT)})} 
+                 value={data.weight || ''} 
+               />
             </div>
             <div>
               <label className="text-xs font-bold text-brand-500 uppercase tracking-wider mb-1 block">{t.gender}</label>
@@ -267,12 +307,12 @@ const Onboarding = ({ onComplete }: { onComplete: (profile: UserProfile) => void
               {!noMeds && (
                 <div className="bg-white p-4 rounded-xl border border-brand-100 shadow-sm mb-4">
                   <div className="space-y-3">
-                    <input type="text" placeholder={t.medNamePlaceholder} className="w-full p-3 bg-brand-50 rounded-lg border border-brand-100 outline-none focus:ring-2 ring-brand-500 text-sm" value={medInput.name} onChange={e => setMedInput({...medInput, name: e.target.value})} />
+                    <input type="text" placeholder={t.medNamePlaceholder} maxLength={SECURITY_CONFIG.MAX_ITEM_LENGTH} className="w-full p-3 bg-brand-50 rounded-lg border border-brand-100 outline-none focus:ring-2 ring-brand-500 text-sm" value={medInput.name} onChange={e => setMedInput({...medInput, name: e.target.value})} />
                     <div className="flex gap-2">
-                       <input type="text" placeholder={t.dosagePlaceholder} className="w-full p-3 bg-brand-50 rounded-lg border border-brand-100 outline-none focus:ring-2 ring-brand-500 text-sm" value={medInput.dosage} onChange={e => setMedInput({...medInput, dosage: e.target.value})} />
-                       <input type="text" placeholder={t.freqPlaceholder} className="w-full p-3 bg-brand-50 rounded-lg border border-brand-100 outline-none focus:ring-2 ring-brand-500 text-sm" value={medInput.freq} onChange={e => setMedInput({...medInput, freq: e.target.value})} />
+                       <input type="text" placeholder={t.dosagePlaceholder} maxLength={50} className="w-full p-3 bg-brand-50 rounded-lg border border-brand-100 outline-none focus:ring-2 ring-brand-500 text-sm" value={medInput.dosage} onChange={e => setMedInput({...medInput, dosage: e.target.value})} />
+                       <input type="text" placeholder={t.freqPlaceholder} maxLength={50} className="w-full p-3 bg-brand-50 rounded-lg border border-brand-100 outline-none focus:ring-2 ring-brand-500 text-sm" value={medInput.freq} onChange={e => setMedInput({...medInput, freq: e.target.value})} />
                     </div>
-                    <button onClick={addMedication} disabled={!medInput.name} className="w-full bg-brand-600 text-white font-bold py-3 rounded-lg text-sm hover:bg-brand-700 disabled:opacity-50 flex items-center justify-center">
+                    <button onClick={addMedication} disabled={!medInput.name || (data.medications || []).length >= SECURITY_CONFIG.MAX_LIST_ITEMS} className="w-full bg-brand-600 text-white font-bold py-3 rounded-lg text-sm hover:bg-brand-700 disabled:opacity-50 flex items-center justify-center">
                       <Plus className="w-4 h-4 mr-2" /> {t.addMedication}
                     </button>
                   </div>
@@ -284,15 +324,15 @@ const Onboarding = ({ onComplete }: { onComplete: (profile: UserProfile) => void
               <textarea 
                 placeholder={t.allergiesPlaceholder} 
                 disabled={noAllergies} 
+                maxLength={2000}
                 className={`w-full p-4 bg-white rounded-xl border outline-none focus:ring-2 ring-brand-500 h-24 text-brand-900 transition-opacity ${noAllergies ? 'opacity-50' : 'border-brand-100'}`} 
                 value={allergyText} 
                 onChange={e => {
                   const val = e.target.value;
                   setAllergyText(val);
-                  // Update parent data silently as a structured array
                   setData({
                     ...data, 
-                    allergies: val.split(',').map(s => s.trim()).filter(Boolean)
+                    allergies: val.split(',').map(s => s.trim().substring(0, SECURITY_CONFIG.MAX_ITEM_LENGTH)).filter(Boolean).slice(0, SECURITY_CONFIG.MAX_LIST_ITEMS)
                   });
                 }} 
               />
@@ -320,7 +360,7 @@ const MedicalCabinet = ({ profile, onUpdateProfile }: { profile: UserProfile, on
   
   const handleAddItem = (category: 'medications' | 'allergies' | 'conditions', item: string) => {
     const list = profile[category] || [];
-    if (!list.includes(item)) {
+    if (!list.includes(item) && list.length < SECURITY_CONFIG.MAX_LIST_ITEMS) {
        onUpdateProfile({ ...profile, [category]: [...list, item] });
     }
   };
@@ -334,12 +374,12 @@ const MedicalCabinet = ({ profile, onUpdateProfile }: { profile: UserProfile, on
     <div className="p-6 space-y-6 animate-in fade-in pb-24">
       <h2 className="text-2xl font-serif font-bold text-brand-900 mb-2">{t.myCabinet}</h2>
       
-      {/* Search Bar with White Background */}
       <div className="relative mb-6">
         <Search className="absolute left-4 top-3.5 w-5 h-5 text-brand-400" />
         <input 
           type="text" 
           placeholder="Search cabinet..." 
+          maxLength={100}
           className="w-full bg-white border border-brand-100 rounded-2xl py-3.5 pl-12 pr-4 text-brand-900 outline-none focus:ring-2 ring-brand-500 shadow-sm"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -449,7 +489,12 @@ const SettingsView = ({ profile, onUpdateProfile, onReset }: { profile: UserProf
   const t = translations[profile.language];
   return (
     <div className="p-6 pb-24 animate-in fade-in">
-      <h2 className="text-2xl font-serif font-bold text-brand-900 mb-6">{t.settings}</h2>
+      <div className="flex items-center mb-6">
+        <button onClick={() => window.history.back()} className="mr-4 p-2 hover:bg-brand-100 rounded-full transition-colors lg:hidden">
+           <ChevronRight className="w-5 h-5 rotate-180" />
+        </button>
+        <h2 className="text-2xl font-serif font-bold text-brand-900">{t.settings}</h2>
+      </div>
       <div className="bg-white rounded-xl shadow-sm border border-brand-100 overflow-hidden mb-6">
         <div className="p-4 border-b border-brand-50 flex justify-between items-center">
           <span className="text-brand-600 flex items-center"><Globe className="w-4 h-4 mr-2"/> {t.language}</span>
@@ -460,13 +505,22 @@ const SettingsView = ({ profile, onUpdateProfile, onReset }: { profile: UserProf
           </select>
         </div>
         <div className="p-4 border-b border-brand-50 flex justify-between items-center">
+          <span className="text-brand-600">Personal Info</span>
+          <span className="text-brand-800 font-bold">{profile.name} ({profile.age}y)</span>
+        </div>
+        <div className="p-4 border-b border-brand-50 flex justify-between items-center">
           <span className="text-brand-600">{t.version}</span>
           <span className="text-brand-400">1.1.0</span>
         </div>
       </div>
-      <button onClick={onReset} className="w-full bg-red-50 text-red-600 font-bold py-4 rounded-xl border border-red-100 flex items-center justify-center hover:bg-red-100 transition-colors">
-        <Trash2 className="w-5 h-5 mr-2" /> {t.resetData}
-      </button>
+
+      <div className="bg-red-50/50 p-6 rounded-2xl border border-red-100 mb-8">
+        <h3 className="text-red-800 font-bold mb-2">{t.resetData}</h3>
+        <p className="text-sm text-red-600 mb-4">{t.resetDesc}</p>
+        <button onClick={onReset} className="w-full bg-red-600 text-white font-bold py-4 rounded-xl flex items-center justify-center hover:bg-red-700 transition-colors shadow-lg shadow-red-100">
+          <Trash2 className="w-5 h-5 mr-2" /> {t.resetData}
+        </button>
+      </div>
     </div>
   );
 };
@@ -481,11 +535,19 @@ const App = () => {
     const savedProfile = localStorage.getItem('truelabel_profile');
     const savedHistory = localStorage.getItem('truelabel_history');
     if (savedProfile) {
-      setProfile(JSON.parse(savedProfile));
-      setView('DASHBOARD');
+      try {
+        setProfile(JSON.parse(savedProfile));
+        setView('DASHBOARD');
+      } catch (e) {
+        console.error("Error parsing profile", e);
+      }
     }
     if (savedHistory) {
-      setScanHistory(JSON.parse(savedHistory));
+      try {
+        setScanHistory(JSON.parse(savedHistory));
+      } catch (e) {
+        console.error("Error parsing history", e);
+      }
     }
   }, []);
 
@@ -502,7 +564,7 @@ const App = () => {
 
   const handleScanComplete = (result: ScanResult) => {
     setCurrentResult(result);
-    const newHistory = [...scanHistory, result];
+    const newHistory = [...scanHistory, result].slice(-SECURITY_CONFIG.MAX_LIST_ITEMS);
     setScanHistory(newHistory);
     localStorage.setItem('truelabel_history', JSON.stringify(newHistory));
     setView('RESULTS');
@@ -512,18 +574,8 @@ const App = () => {
     const currentLang = profile?.language || 'en';
     const t = translations[currentLang as keyof typeof translations] || translations.en;
     if (window.confirm(t.confirmReset)) {
-      // Clear all local storage related to this app
-      localStorage.removeItem('truelabel_profile');
-      localStorage.removeItem('truelabel_history');
       localStorage.clear();
-      
-      // Clear in-memory state
-      setProfile(null);
-      setScanHistory([]);
-      setView('ONBOARDING');
-      
-      // Force a full page reload to guarantee a clean state across all components/timers
-      window.location.reload();
+      window.location.href = window.location.origin;
     }
   };
 
@@ -573,7 +625,14 @@ const App = () => {
           </div>
         )}
         {view === 'SCANNER' && profile && <Scanner userProfile={profile} onScanComplete={handleScanComplete} onCancel={() => setView('DASHBOARD')} />}
-        {view === 'RESULTS' && currentResult && <ResultsView result={currentResult} language={currentLang} onBack={() => setView('DASHBOARD')} />}
+        {view === 'RESULTS' && currentResult && (
+          <ResultsView 
+            result={currentResult} 
+            language={currentLang} 
+            userProfile={profile || undefined}
+            onBack={() => setView('DASHBOARD')} 
+          />
+        )}
         {view === 'CABINET' && profile && <MedicalCabinet profile={profile} onUpdateProfile={handleUpdateProfile} />}
         {view === 'HISTORY' && <History scans={scanHistory} language={currentLang} onView={(r) => { setCurrentResult(r); setView('RESULTS'); }} />}
         {view === 'EDUCATION' && <Education language={currentLang} />}

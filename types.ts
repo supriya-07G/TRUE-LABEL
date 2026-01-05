@@ -28,19 +28,25 @@ export interface IngredientAnalysis {
 export interface ScanResult {
   id: string;
   timestamp: number;
-  productName: string; // Identified or generic name
+  productName: string;
   riskLevel: RiskLevel;
-  summary: string; // "Safe to consume" or "Contains peanuts!"
-  usage: string; // Primary use of product
-  safetyConcerns: string; // Specific safety warnings
-  directions: string; // How to use
+  summary: string;
+  usage: string;
+  safetyConcerns: string;
+  directions: string;
   ingredients: IngredientAnalysis[];
   detectedAllergens: string[];
   drugInteractions: string[];
   conditionConflicts: string[];
-  bannedStatus: string | null; // General status
-  bannedCountries: string[]; // List of specific countries
+  bannedStatus: string | null;
+  bannedCountries: string[];
   rawText?: string;
+}
+
+export interface AlternativeProduct {
+  name: string;
+  brand: string;
+  whySafer: string;
 }
 
 export interface QuizQuestion {
@@ -61,3 +67,19 @@ export type ViewState =
   | 'HISTORY'
   | 'EDUCATION'
   | 'SETTINGS';
+
+/**
+ * Security Constants for Hardening
+ */
+export const SECURITY_CONFIG = {
+  MAX_NAME_LENGTH: 100,
+  MAX_AGE: 125,
+  MAX_WEIGHT: 600,
+  MAX_LIST_ITEMS: 100,
+  MAX_ITEM_LENGTH: 200,
+  MAX_INPUT_TEXT_LENGTH: 10000,
+  RATE_LIMIT: {
+    MAX_REQUESTS_PER_WINDOW: 5,
+    WINDOW_MS: 60000, // 1 minute
+  }
+};

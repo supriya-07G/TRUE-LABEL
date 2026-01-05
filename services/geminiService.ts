@@ -1,10 +1,27 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { UserProfile, ScanResult, RiskLevel } from '../types.ts';
+import { UserProfile, ScanResult, RiskLevel, SECURITY_CONFIG, AlternativeProduct } from '../types.ts';
 
-// Initialize Gemini Client
+/**
+ * Client-side Rate Limiting State
+ */
+const requestHistory: number[] = [];
+
+const isRateLimited = (): boolean => {
+  const now = Date.now();
+  while (requestHistory.length > 0 && requestHistory[0] < now - SECURITY_CONFIG.RATE_LIMIT.WINDOW_MS) {
+    requestHistory.shift();
+  }
+  return requestHistory.length >= SECURITY_CONFIG.RATE_LIMIT.MAX_REQUESTS_PER_WINDOW;
+};
+
+const sanitizeString = (input: string, maxLength: number): string => {
+  if (!input) return "";
+  const stripped = input.replace(/<[^>]*>?/gm, '');
+  return stripped.substring(0, maxLength).trim();
+};
+
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-// Prompt construction helper
 const createSystemInstruction = (profile: UserProfile): string => {
   const languageMap: Record<string, string> = {
     'en': 'English',
@@ -13,54 +30,51 @@ const createSystemInstruction = (profile: UserProfile): string => {
   };
   const targetLanguage = languageMap[profile.language] || 'English';
 
+  const sanitizedConditions = profile.conditions.map(c => sanitizeString(c, SECURITY_CONFIG.MAX_ITEM_LENGTH));
+  const sanitizedAllergies = profile.allergies.map(a => sanitizeString(a, SECURITY_CONFIG.MAX_ITEM_LENGTH));
+  const sanitizedMeds = profile.medications.map(m => sanitizeString(m, SECURITY_CONFIG.MAX_ITEM_LENGTH));
+
   return `
     You are True Label, an expert medical and food safety AI assistant. 
-    Your job is to analyze product ingredients (from text or image OCR) and evaluate safety for a specific user.
+    Analyze product ingredients and evaluate safety for this user.
     
     USER PROFILE:
-    - Age: ${profile.age}
-    - Gender: ${profile.gender}
-    - Conditions: ${profile.conditions.join(', ')}
-    - Allergies: ${profile.allergies.join(', ')}
-    - Current Medications: ${profile.medications.join(', ')}
+    - Age: ${Math.min(profile.age, SECURITY_CONFIG.MAX_AGE)}
+    - Gender: ${sanitizeString(profile.gender, 20)}
+    - Conditions: ${sanitizedConditions.join(', ')}
+    - Allergies: ${sanitizedAllergies.join(', ')}
+    - Current Medications: ${sanitizedMeds.join(', ')}
     
     CRITICAL INSTRUCTION:
-    Output the JSON keys in English, BUT ensure all string values (summary, usage, safetyConcerns, directions, ingredient reasons, bannedCountries) are translated into ${targetLanguage}.
+    Output JSON keys in English. String values translated into ${targetLanguage}.
 
     STRICT ANALYSIS RULES:
-    1. OCR: Extract text from the provided image or text input. Identify if it is a medicine or food.
-    2. CHECK ALLERGIES: Compare ingredients against user allergies. High Risk.
-    3. CHECK INTERACTIONS: Compare ingredients against user medications. High/Medium Risk.
-    4. CHECK CONDITIONS: specific ingredients bad for ${profile.conditions.join(', ')}.
-    5. GLOBAL BANS: Check if ingredients (e.g., Nimesulide, Cisapride, specific food dyes, Titanium Dioxide, Potassium Bromate) are banned by FDA, WHO, CDSCO, EU Commission, or other regulatory bodies.
-    6. BANNED COUNTRIES: Cross-reference ingredients with global regulatory bans (EU, USA, India, Japan, UK). Explicitly list countries where the product/ingredients are restricted or banned (e.g., 'Banned in EU', 'Restricted in California').
-    7. USAGE & DIRECTIONS: Identify what the product is for and how to use it safely.
-    8. SAFETY CONCERNS: If specific risks exist, list them. IF SAFE, provide a general health/safety tip relevant to this product type (e.g., "Store in a cool dry place", "Consume in moderation"). This field MUST NOT be empty.
+    1. OCR/Text: Extract text. Identify product type.
+    2. CHECK ALLERGIES: High Risk if match.
+    3. CHECK INTERACTIONS: High/Medium Risk with meds.
+    4. CHECK CONDITIONS: Conflicts for profile conditions.
+    5. GLOBAL BANS: Check FDA, WHO, CDSCO, EU.
+    6. BANNED COUNTRIES: Explicitly list restriction regions.
+    7. USAGE & DIRECTIONS: Safe usage guidelines.
+    8. SAFETY CONCERNS: Specific warnings or general health tips.
     
-    OUTPUT FORMAT:
-    Return valid JSON only.
-    Structure:
+    OUTPUT FORMAT (Valid JSON only):
     {
       "productName": "string",
       "riskLevel": "SAFE" | "CAUTION" | "DANGER",
-      "summary": "string (Short overview in ${targetLanguage})",
-      "usage": "string (What is this product used for? in ${targetLanguage})",
-      "safetyConcerns": "string (Specific warnings. If safe, provide a general safety tip in ${targetLanguage})",
-      "directions": "string (How to use/consume this product in ${targetLanguage})",
-      "detectedAllergens": ["string (English)"],
-      "drugInteractions": ["string (English)"],
-      "conditionConflicts": ["string (English)"],
-      "bannedStatus": "string or null (Summary of ban status)",
-      "bannedCountries": ["string (Country names in ${targetLanguage})"],
+      "summary": "string",
+      "usage": "string",
+      "safetyConcerns": "string",
+      "directions": "string",
+      "detectedAllergens": ["string"],
+      "drugInteractions": ["string"],
+      "conditionConflicts": ["string"],
+      "bannedStatus": "string or null",
+      "bannedCountries": ["string"],
       "ingredients": [
-        { "name": "string (English)", "status": "safe" | "caution" | "danger", "reason": "string (in ${targetLanguage})" }
+        { "name": "string", "status": "safe" | "caution" | "danger", "reason": "string" }
       ]
     }
-
-    CRITERIA FOR RISK LEVEL:
-    - DANGER: Direct allergen match, severe drug interaction, or banned in major countries (USA, EU, India, etc.).
-    - CAUTION: Mild interaction, high sugar/salt for diabetic/hypertensive, or dosage warnings.
-    - SAFE: No known conflicts and not banned.
   `;
 };
 
@@ -68,12 +82,30 @@ export const analyzeProduct = async (
   input: string | File, 
   profile: UserProfile
 ): Promise<ScanResult> => {
-  
+  if (isRateLimited()) {
+    return {
+      id: Date.now().toString(),
+      timestamp: Date.now(),
+      productName: "System Notice",
+      riskLevel: RiskLevel.CAUTION,
+      summary: "Rate limit exceeded. Please wait a minute before scanning again.",
+      usage: "N/A",
+      safetyConcerns: "Too many requests in a short time.",
+      directions: "Wait and try again.",
+      ingredients: [],
+      detectedAllergens: [],
+      drugInteractions: [],
+      conditionConflicts: [],
+      bannedStatus: null,
+      bannedCountries: []
+    };
+  }
+
+  requestHistory.push(Date.now());
   const systemInstruction = createSystemInstruction(profile);
   
   try {
     let response;
-
     const schema = {
       type: Type.OBJECT,
       properties: {
@@ -104,6 +136,7 @@ export const analyzeProduct = async (
     };
 
     if (input instanceof File) {
+      if (input.size > 5 * 1024 * 1024) throw new Error("File size too large");
       const base64Data = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(input);
@@ -130,9 +163,10 @@ export const analyzeProduct = async (
         }
       });
     } else {
+      const sanitizedInput = sanitizeString(input, SECURITY_CONFIG.MAX_INPUT_TEXT_LENGTH);
       response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: input,
+        contents: sanitizedInput,
         config: {
           systemInstruction: systemInstruction,
           responseMimeType: "application/json",
@@ -143,15 +177,12 @@ export const analyzeProduct = async (
 
     const text = response.text;
     if (!text) throw new Error("No response from AI");
-
     const analysis = JSON.parse(text);
-
     return {
       id: Date.now().toString(),
       timestamp: Date.now(),
       ...analysis
     };
-
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
     return {
@@ -159,9 +190,9 @@ export const analyzeProduct = async (
       timestamp: Date.now(),
       productName: "Scan Error",
       riskLevel: RiskLevel.CAUTION,
-      summary: "Could not process image or text. Please try again or ensure the image is clear.",
+      summary: "Could not process scan. Ensure input is clear and valid.",
       usage: "Unknown",
-      safetyConcerns: "Analysis failed",
+      safetyConcerns: "Analysis failed due to technical error.",
       directions: "N/A",
       ingredients: [],
       detectedAllergens: [],
@@ -170,6 +201,72 @@ export const analyzeProduct = async (
       bannedStatus: null,
       bannedCountries: []
     };
+  }
+};
+
+export const findSaferAlternatives = async (
+  result: ScanResult,
+  profile: UserProfile
+): Promise<AlternativeProduct[]> => {
+  const languageMap: Record<string, string> = {
+    'en': 'English',
+    'te': 'Telugu (తెలుగు)',
+    'hi': 'Hindi (हिंदी)'
+  };
+  const targetLanguage = languageMap[profile.language] || 'English';
+
+  const systemInstruction = `
+    You are True Label, a health safety assistant. 
+    The user scanned "${result.productName}" which was rated "${result.riskLevel}" because of:
+    - Allergens: ${result.detectedAllergens.join(', ')}
+    - Interactions: ${result.drugInteractions.join(', ')}
+    - Conflicts: ${result.conditionConflicts.join(', ')}
+
+    USER PROFILE:
+    - Conditions: ${profile.conditions.join(', ')}
+    - Allergies: ${profile.allergies.join(', ')}
+    - Meds: ${profile.medications.join(', ')}
+
+    Suggest 3-4 safer alternative products (either food or medicine depending on the input) that would likely be "SAFE" for this specific user.
+    Focus on popular, widely available brands.
+    Output string values in ${targetLanguage}.
+  `;
+
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      alternatives: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            brand: { type: Type.STRING },
+            whySafer: { type: Type.STRING }
+          },
+          required: ["name", "brand", "whySafer"]
+        }
+      }
+    },
+    required: ["alternatives"]
+  };
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `Suggest safer alternatives to "${result.productName}" for my health profile.`,
+      config: {
+        systemInstruction: systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: schema
+      }
+    });
+
+    const data = JSON.parse(response.text || '{"alternatives": []}');
+    return data.alternatives;
+  } catch (error) {
+    console.error("Gemini Alternatives Error:", error);
+    return [];
   }
 };
 

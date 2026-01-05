@@ -1,26 +1,30 @@
 import React, { useEffect, useState } from 'react';
-import { ShieldCheck, AlertTriangle, XCircle, Share2, PhoneCall, ChevronDown, CheckCircle2, Info, BookOpen, HeartPulse, Globe, X } from 'lucide-react';
-import { ScanResult, RiskLevel } from '../types';
+import { ShieldCheck, AlertTriangle, XCircle, Share2, PhoneCall, ChevronDown, CheckCircle2, Info, BookOpen, HeartPulse, Globe, X, Search, Sparkles, Loader2 } from 'lucide-react';
+import { ScanResult, RiskLevel, AlternativeProduct, UserProfile } from '../types';
 import { translations } from '../translations';
+import { findSaferAlternatives } from '../services/geminiService';
 
 interface ResultsViewProps {
   result: ScanResult;
   language: string;
+  userProfile?: UserProfile;
   onBack: () => void;
 }
 
-const ResultsView: React.FC<ResultsViewProps> = ({ result, language, onBack }) => {
+const ResultsView: React.FC<ResultsViewProps> = ({ result, language, userProfile, onBack }) => {
   const [showSafetyModal, setShowSafetyModal] = useState(false);
+  const [showAlternativesModal, setShowAlternativesModal] = useState(false);
+  const [isFindingAlternatives, setIsFindingAlternatives] = useState(false);
+  const [alternatives, setAlternatives] = useState<AlternativeProduct[]>([]);
+  
   const isDanger = result.riskLevel === RiskLevel.DANGER;
   const isCaution = result.riskLevel === RiskLevel.CAUTION;
   
   const t = translations[language as keyof typeof translations] || translations.en;
 
   useEffect(() => {
-    // Play alert sound if danger
     if (isDanger) {
       const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); 
-      // Note: Auto-play policies might block this without interaction, but we attempt it.
       audio.play().catch(() => {});
     }
   }, [isDanger]);
@@ -48,16 +52,29 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, language, onBack }) =
         await navigator.clipboard.writeText(text);
         alert('Report copied to clipboard');
       } catch (err) {
-        // Fallback or silence
         console.error('Clipboard failed', err);
       }
+    }
+  };
+
+  const handleFindAlternatives = async () => {
+    if (!userProfile) return;
+    setIsFindingAlternatives(true);
+    setShowAlternativesModal(true);
+    try {
+      const suggested = await findSaferAlternatives(result, userProfile);
+      setAlternatives(suggested);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsFindingAlternatives(false);
     }
   };
 
   const getHeaderColor = () => {
     if (isDanger) return 'bg-safety-danger';
     if (isCaution) return 'bg-safety-caution';
-    return 'bg-brand-600'; // Semantic Green matches Brand Green
+    return 'bg-brand-600'; 
   };
 
   const getIcon = () => {
@@ -72,7 +89,6 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, language, onBack }) =
     return t.safeConsume;
   };
 
-  // Determine styling for safety card based on risk
   const safetyCardStyles = isDanger 
     ? 'bg-red-50 border-red-500 text-red-800' 
     : isCaution 
@@ -92,6 +108,9 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, language, onBack }) =
            <div className="absolute inset-0 bg-red-800 rounded-b-[2.5rem] animate-pulse-fast opacity-50 z-0"></div>
          )}
          <div className="relative z-10 flex flex-col items-center">
+            <button onClick={onBack} className="absolute left-0 top-0 p-2 text-white/50 hover:text-white transition-colors">
+              <ChevronDown className="w-6 h-6 rotate-90" />
+            </button>
             {getIcon()}
             <h1 className="text-3xl font-serif font-black tracking-wide">{getTitle()}</h1>
             <p className="mt-2 text-white/90 font-medium tracking-wide">{result.productName}</p>
@@ -108,7 +127,19 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, language, onBack }) =
           </p>
         </div>
 
-        {/* New Usage & Directions Card */}
+        {/* Alternatives Shortcut Button (only if not safe) */}
+        {(isDanger || isCaution) && (
+          <button 
+            onClick={handleFindAlternatives}
+            className="w-full bg-gradient-to-r from-brand-600 to-brand-700 text-white p-4 rounded-2xl shadow-lg flex items-center justify-center space-x-2 font-bold hover:scale-[1.02] active:scale-95 transition-all group overflow-hidden relative"
+          >
+            <div className="absolute inset-0 bg-white/10 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+            <Sparkles className="w-5 h-5" />
+            <span>Find Safer Alternatives</span>
+          </button>
+        )}
+
+        {/* Usage & Directions Card */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-brand-100">
           <div className="flex items-start mb-4">
              <BookOpen className="w-5 h-5 text-brand-600 mr-2 mt-0.5" />
@@ -123,7 +154,6 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, language, onBack }) =
         </div>
 
         <div className="space-y-3">
-             {/* Banned Countries Alert */}
              {result.bannedCountries && result.bannedCountries.length > 0 && (
                <div className="bg-red-50 border-l-4 border-red-600 p-4 rounded-r-lg shadow-sm animate-pulse-fast">
                  <h4 className="font-bold text-red-900 flex items-center mb-1"><Globe className="w-4 h-4 mr-2"/> {t.bannedCountries}</h4>
@@ -133,7 +163,6 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, language, onBack }) =
                </div>
              )}
 
-             {/* Main Safety Concern Text - Always Shown */}
              <div className={`p-5 rounded-2xl border-l-4 shadow-sm ${safetyCardStyles}`}>
                  <h4 className={`font-bold flex items-center mb-2 ${safetyIconColor}`}>
                     <HeartPulse className="w-5 h-5 mr-2" />
@@ -208,7 +237,7 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, language, onBack }) =
                 {t.emergency}
               </button>
             </div>
-            <p className="text-center text-xs text-brand-400 mt-2">{t.recEmergency}</p>
+            <p className="text-center text-[10px] text-brand-400 mt-2 uppercase tracking-widest font-bold">{t.recEmergency}</p>
           </div>
         )}
 
@@ -228,13 +257,12 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, language, onBack }) =
            </div>
         )}
         
-        {/* Spacer for bottom button on mobile */}
         {isDanger && <div className="h-28"></div>}
       </div>
 
       {/* Safety Info Modal */}
       {showSafetyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-sm max-h-[85vh] overflow-y-auto p-6 shadow-2xl relative animate-in zoom-in-95">
              <button onClick={() => setShowSafetyModal(false)} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors">
                <X className="w-5 h-5 text-gray-600" />
@@ -259,19 +287,19 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, language, onBack }) =
                      <ul className="text-sm space-y-3 text-brand-600">
                         {result.detectedAllergens.map(a => (
                           <li key={a} className="flex items-start">
-                            <span className="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded mr-2 mt-0.5">ALLERGY</span>
+                            <span className="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded mr-2 mt-0.5 uppercase">ALLERGY</span>
                             {a}
                           </li>
                         ))}
                         {result.drugInteractions.map(d => (
                           <li key={d} className="flex items-start">
-                            <span className="bg-amber-100 text-amber-600 text-[10px] font-bold px-2 py-0.5 rounded mr-2 mt-0.5">INTERACTION</span>
+                            <span className="bg-amber-100 text-amber-600 text-[10px] font-bold px-2 py-0.5 rounded mr-2 mt-0.5 uppercase">INTERACTION</span>
                             {d}
                           </li>
                         ))}
                         {result.conditionConflicts.map(c => (
                           <li key={c} className="flex items-start">
-                            <span className="bg-brand-100 text-brand-600 text-[10px] font-bold px-2 py-0.5 rounded mr-2 mt-0.5">CONDITION</span>
+                            <span className="bg-brand-100 text-brand-600 text-[10px] font-bold px-2 py-0.5 rounded mr-2 mt-0.5 uppercase">CONDITION</span>
                             {c}
                           </li>
                         ))}
@@ -300,6 +328,68 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, language, onBack }) =
              <button onClick={() => setShowSafetyModal(false)} className="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-3 rounded-xl mt-6 transition-colors shadow-lg shadow-brand-100">
                {t.understood}
              </button>
+          </div>
+        </div>
+      )}
+
+      {/* Safer Alternatives Modal */}
+      {showAlternativesModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-sm max-h-[85vh] overflow-y-auto p-6 shadow-2xl relative animate-in zoom-in-95 flex flex-col">
+             <button onClick={() => setShowAlternativesModal(false)} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors">
+               <X className="w-5 h-5 text-gray-600" />
+             </button>
+
+             <div className="text-center mb-6 pt-2">
+               <div className="w-16 h-16 rounded-full bg-brand-100 flex items-center justify-center mx-auto mb-4">
+                 <Sparkles className="w-8 h-8 text-brand-600" />
+               </div>
+               <h2 className="text-xl font-serif font-bold text-brand-900">Safer Alternatives</h2>
+               <p className="text-xs text-brand-400 mt-1 uppercase tracking-widest font-bold">Suggested products for you</p>
+             </div>
+
+             {isFindingAlternatives ? (
+               <div className="flex-1 flex flex-col items-center justify-center py-12 space-y-4">
+                 <Loader2 className="w-10 h-10 text-brand-600 animate-spin" />
+                 <p className="text-brand-500 font-medium animate-pulse">Researching safe options...</p>
+               </div>
+             ) : (
+               <div className="space-y-4 overflow-y-auto pr-1">
+                 {alternatives.length > 0 ? alternatives.map((alt, idx) => (
+                   <div key={idx} className="bg-brand-50 p-4 rounded-2xl border border-brand-100 hover:border-brand-300 transition-colors shadow-sm">
+                      <div className="flex justify-between items-start mb-2">
+                         <div>
+                            <h4 className="font-bold text-brand-900 leading-tight">{alt.name}</h4>
+                            <p className="text-xs text-brand-500 font-medium uppercase tracking-wider">{alt.brand}</p>
+                         </div>
+                         <div className="bg-white p-1 rounded-lg border border-brand-100">
+                            <CheckCircle2 className="w-4 h-4 text-brand-500" />
+                         </div>
+                      </div>
+                      <p className="text-sm text-brand-700 leading-relaxed bg-white/50 p-2 rounded-lg border border-white/80">
+                         {alt.whySafer}
+                      </p>
+                   </div>
+                 )) : (
+                   <div className="text-center py-10">
+                      <Search className="w-10 h-10 text-brand-200 mx-auto mb-2" />
+                      <p className="text-brand-400 text-sm">No specific alternatives found.</p>
+                   </div>
+                 )}
+                 <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-start space-x-3 mt-4">
+                    <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                    <p className="text-[10px] text-blue-800 leading-tight">
+                       These suggestions are based on AI analysis of general product data and your profile. Always verify the physical label of any new product.
+                    </p>
+                 </div>
+               </div>
+             )}
+
+             {!isFindingAlternatives && (
+               <button onClick={() => setShowAlternativesModal(false)} className="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-3 rounded-xl mt-6 transition-colors">
+                 Got it
+               </button>
+             )}
           </div>
         </div>
       )}

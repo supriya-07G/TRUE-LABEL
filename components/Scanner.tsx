@@ -1,6 +1,7 @@
+
 import React, { useState, useRef } from 'react';
 import { Camera, Upload, Search, Type, Loader2, AlertCircle } from 'lucide-react';
-import { UserProfile, ScanResult } from '../types';
+import { UserProfile, ScanResult, SECURITY_CONFIG } from '../types';
 import { analyzeProduct } from '../services/geminiService';
 import { translations } from '../translations';
 
@@ -21,6 +22,18 @@ const Scanner: React.FC<ScannerProps> = ({ userProfile, onScanComplete, onCancel
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Security check: File type
+    if (!file.type.startsWith('image/')) {
+      alert("Only images are allowed.");
+      return;
+    }
+
+    // Security check: File size (e.g., 10MB limit)
+    if (file.size > 10 * 1024 * 1024) {
+      alert("Image is too large (max 10MB).");
+      return;
+    }
     
     setIsScanning(true);
     try {
@@ -29,20 +42,28 @@ const Scanner: React.FC<ScannerProps> = ({ userProfile, onScanComplete, onCancel
     } catch (error) {
       console.error(error);
       setIsScanning(false);
-      alert("Failed to analyze image. Please try again.");
+      alert("Analysis failed. Please try a clearer photo.");
     }
   };
 
   const handleTextSubmit = async () => {
-    if (!inputText.trim()) return;
+    const trimmed = inputText.trim();
+    if (!trimmed) return;
+    
+    // Security: Input length limit
+    if (trimmed.length > SECURITY_CONFIG.MAX_INPUT_TEXT_LENGTH) {
+      alert(`Text is too long (max ${SECURITY_CONFIG.MAX_INPUT_TEXT_LENGTH} characters).`);
+      return;
+    }
+
     setIsScanning(true);
     try {
-      const result = await analyzeProduct(inputText, userProfile);
+      const result = await analyzeProduct(trimmed, userProfile);
       onScanComplete(result);
     } catch (error) {
       console.error(error);
       setIsScanning(false);
-      alert("Failed to analyze text.");
+      alert("Failed to analyze text. Please check your connection.");
     }
   };
 
@@ -94,7 +115,7 @@ const Scanner: React.FC<ScannerProps> = ({ userProfile, onScanComplete, onCancel
               type="file" 
               ref={fileInputRef} 
               className="hidden" 
-              accept="image/*"
+              accept="image/png, image/jpeg, image/webp"
               onChange={handleFileUpload}
             />
             <div className="p-4 bg-brand-50 rounded-full shadow-inner mb-4 group-hover:bg-brand-100 transition-colors">
@@ -115,9 +136,15 @@ const Scanner: React.FC<ScannerProps> = ({ userProfile, onScanComplete, onCancel
             <textarea 
               className="w-full h-48 p-4 rounded-xl border border-brand-200 focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none mb-4 bg-white text-brand-900 placeholder:text-brand-300"
               placeholder={t.enterText}
+              maxLength={SECURITY_CONFIG.MAX_INPUT_TEXT_LENGTH}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
             />
+            <div className="flex justify-between items-center mb-2 px-1">
+               <span className="text-[10px] text-brand-400 uppercase font-bold tracking-widest">
+                 {inputText.length} / {SECURITY_CONFIG.MAX_INPUT_TEXT_LENGTH}
+               </span>
+            </div>
             <button 
               onClick={handleTextSubmit}
               disabled={!inputText.trim()}
